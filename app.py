@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--smoke-camera-distance", type=float)
     parser.add_argument('--smoke-render-mode',choices=['raw','box','mixamo'],default='box',help=argparse.SUPPRESS)
     parser.add_argument('--smoke-bone-overlay',choices=['on','off'])
+    parser.add_argument('--playlist', type=Path, help='Open a playlist file in the Playlist panel')
+    parser.add_argument('--smoke-playlist-steps', type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args()
     # Give Windows a stable app identity so the taskbar uses the app icon.
     if sys.platform == "win32":
@@ -46,17 +48,22 @@ def main():
     window.bone_overlay.setChecked(args.smoke_bone_overlay=='on' if args.smoke_bone_overlay else args.smoke_render_mode!='raw')
     if args.project:
         window.load_project(args.project)
+    if args.playlist:
+        window.playlist_load_file(args.playlist)
     window.show()
     if args.smoke_camera_distance is not None:
         window.motion_view.auto_fit = False
         window.motion_view.distance = max(0.4, min(80, args.smoke_camera_distance))
         window.motion_view.update()
     app.aboutToQuit.connect(window.shutdown_preview)
+    if args.smoke_playlist_steps:
+        from mocap.playlist_check import schedule_check as playlist_check
+        playlist_check(window, args.smoke_playlist_steps, args.smoke_report or Path('playlist_report.json'), app.quit)
     if args.smoke_playback_seconds:
         from mocap.playback_check import schedule_check
         schedule_check(window, args.smoke_playback_seconds, args.smoke_report or Path("playback_report.json"),
                        args.smoke_screenshot, app.quit)
-    if args.smoke_screenshot and not args.smoke_run_analysis and not args.smoke_playback_seconds:
+    if args.smoke_screenshot and not args.smoke_run_analysis and not args.smoke_playback_seconds and not args.smoke_playlist_steps:
         def capture(success=True):
             args.smoke_screenshot.parent.mkdir(parents=True, exist_ok=True)
             from mocap.capture import capture_window

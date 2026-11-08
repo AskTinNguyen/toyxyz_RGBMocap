@@ -343,6 +343,17 @@ when present. Open its `project.json` to return to it. Each project manages
 `exmr`, `gvhmr`, `flowhmr`, `mamma` and `prompthmr` result folders as needed. Selecting a model
 loads its saved motion; if it has no result, **Reconstruct 3D** creates its data in
 that folder. Result selections, contact edits and settings stay separate by model.
+
+**View > Playlist** (`Ctrl+L`) reviews several saved projects in turn. Add projects with
+**Add Current**, **Add Projects...** (pick `project.json` files) or **Add Folder...** (every
+project up to two folders deep, for example `projects`). Double-click an item, or press
+`Alt+Right` / `Alt+Left`, to open the next or previous project in the normal video and 3D
+workspace; it starts playing once its video and motion are ready. With **Auto-advance at clip
+end** on, playback moves to the next project when it reaches the end of the clip range instead
+of looping. **Save As...** writes the list to a playlist file (paths next to or below the file
+are stored relative to it); the last playlist file and the auto-advance choice are remembered
+in `config/local.json`. A playlist only references projects. Opening an item records its view
+(frame, trim, camera) the same way **Open Project** does, and never starts reconstruction.
 New ExMR/FlowHMR/GVHMR processing ranges stay under that model's `clips` folder;
 MAMMA and PromptHMR use their own inference/result generation folders. The previous project
 folder format is not migrated; open the original video to create a new project.

@@ -354,8 +354,9 @@ from .mamma_ui import MammaWorkspace
 from .prompthmr_ui import PromptHMRWorkspace
 from .pear_ui import PearWorkspace
 from .preview_export_ui import PreviewExportWorkspace
+from .playlist_ui import PlaylistWorkspace
 
-class MainWindow(PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWorkspace,CharacterWorkspace,ModelWorkspace,ProjectSaving,PeopleWorkspace,QMainWindow):
+class MainWindow(PlaylistWorkspace,PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWorkspace,CharacterWorkspace,ModelWorkspace,ProjectSaving,PeopleWorkspace,QMainWindow):
     def __init__(self, video: Path | None = None):
         super().__init__()
         self.setWindowTitle("RGB MoCap | Motion Workspace")
@@ -408,6 +409,7 @@ class MainWindow(PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWo
         self.data_loader.tracked_actor_ready.connect(self.tracked_actor_ready)
         build_workspace(self)
         self.init_characters()
+        self.init_playlist()
         self.video_view.frame_presented.connect(self.refresh_preview_export_action)
         self.scene_loader.ready.connect(self.refresh_preview_export_action)
         self.timer = QTimer(self)
@@ -443,6 +445,7 @@ class MainWindow(PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWo
     @read_only_checks
     def update_readiness(self):
         self.export_preview_action.setEnabled(self.preview_export_available())
+        self.sync_playlist_controls()
         if self._pear_active:
             if hasattr(self,'camera_tools'):self.camera_tools.sync()
             self.pear_sync_controls();return
@@ -961,6 +964,10 @@ class MainWindow(PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWo
         target = self.slider.clip_in + playback_frame(self.play_anchor - self.slider.clip_in,
                                 elapsed, self.info["fps"], self.slider.clip_out - self.slider.clip_in,
                                 self.play_speed.currentData())
+        # Playback normally loops; a playlist may stop at the clip end and advance instead.
+        played = self.play_anchor - self.slider.clip_in + math.floor(max(0, elapsed) * rate + 1e-8)
+        if played >= self.slider.clip_out - self.slider.clip_in and self.playback_end_reached():
+            return
         self.playback_tick = True
         try:
             self.slider.setValue(target)
@@ -973,6 +980,7 @@ class MainWindow(PreviewExportWorkspace,PearWorkspace,PromptHMRWorkspace,MammaWo
     def shutdown_preview(self):
         if hasattr(self,'camera_tools'):self.camera_tools.close()
         self.shutdown_mamma()
+        self.shutdown_playlist()
         self.stop_playback()
         if hasattr(self,'character_loader'):
             self.character_loader.close();self.character_assets.clear()
