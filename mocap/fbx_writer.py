@@ -14,6 +14,10 @@ from .source_bvh import continuous_angles
 TICKS = 46186158000
 
 
+FILE_ID=bytes.fromhex('28b32aebb624ccc2bfc8b02aa92bfcf1')
+CREATION_TIME='1970-01-01 10:00:00:000'
+
+
 def node(name, *props, children=()):
     return name, props, children
 
@@ -29,6 +33,8 @@ def properties(*items):
 
 
 def _property(value):
+    if isinstance(value, (bytes, bytearray)):
+        return b'R'+struct.pack('<I',len(value))+bytes(value)
     if isinstance(value, str):
         raw=value.encode('utf-8'); return b'S'+struct.pack('<I',len(raw))+raw
     if isinstance(value, (bool, np.bool_)):
@@ -151,6 +157,10 @@ def write(path, names, parents, rest, rest_frames, display, tip_local, frames, f
     with open(path,'xb') as out:
         out.write(b'Kaydara FBX Binary  \0\x1a\0'+struct.pack('<I',7400))
         _element(out,node('FBXHeaderExtension',children=[node('FBXHeaderVersion',1003),node('FBXVersion',7400),node('Creator','RGB MoCap')]))
+        # The footer id below is only valid together with these FileId/CreationTime values (the fixed
+        # constants Blender writes); the Autodesk FBX SDK rejects the file as corrupted without them.
+        _element(out,node('FileId',FILE_ID))
+        _element(out,node('CreationTime',CREATION_TIME))
         _element(out,node('GlobalSettings',children=[node('Version',1000),settings]))
         _element(out,node('Documents',children=[node('Count',1),node('Document',800,'Scene','Scene',children=[properties(),node('RootNode',0)])]))
         _element(out,node('References'))
