@@ -7,7 +7,10 @@ never changes a project's motion, settings or identity.
 File format (version 1):
     {"rgbmocap_playlist": 1, "items": [{"project": "<folder>", "model": "exmr", "label": "..."}]}
 `project` is a workspace root (the folder with the top-level project.json) or one of its model
-folders. `model` (optional) selects a model folder inside a workspace root. Relative paths are
+folders. `model` (optional) selects a model folder inside a workspace root. `frames` (optional,
+[first, last] inclusive video frames) plays only that range: playback starts at `first` and the
+playlist treats `last` as the end (advance or loop), without changing the project's trim.
+`result` (optional, e.g. "initial") selects which cached motion result to show. Relative paths are
 resolved against the playlist file's folder, so a playlist can travel with its projects.
 """
 from __future__ import annotations
@@ -24,7 +27,10 @@ MODELS = ('exmr', 'flowhmr', 'gvhmr', 'mamma', 'prompthmr')
 SETTINGS_KEY = 'playlist'
 
 
-def make_item(project, model=None, label=None):
+RESULT_CHARS = set('abcdefghijklmnopqrstuvwxyz0123456789_')
+
+
+def make_item(project, model=None, label=None, frames=None, result=None):
     item = {'project': str(project)}
     if model:
         if model not in MODELS:
@@ -32,13 +38,23 @@ def make_item(project, model=None, label=None):
         item['model'] = model
     if label:
         item['label'] = str(label)[:200]
+    if frames is not None:
+        if (not isinstance(frames, (list, tuple)) or len(frames) != 2 or not all(isinstance(f, int) and not isinstance(f, bool) for f in frames)
+                or frames[0] < 0 or frames[1] < frames[0]):
+            raise ValueError('frames must be [first, last] video frames with first <= last.')
+        item['frames'] = [int(frames[0]), int(frames[1])]
+    if result:
+        if not isinstance(result, str) or not set(result) <= RESULT_CHARS or len(result) > 64:
+            raise ValueError('Invalid result name.')
+        item['result'] = result
     return item
 
 
 def validate_item(value):
     if not isinstance(value, dict) or not isinstance(value.get('project'), str) or not value['project'].strip():
         raise ValueError('Each playlist item needs a project folder.')
-    return make_item(value['project'], value.get('model') or None, value.get('label') or None)
+    return make_item(value['project'], value.get('model') or None, value.get('label') or None,
+                     value.get('frames'), value.get('result') or None)
 
 
 def target(item, base=None):
@@ -64,7 +80,8 @@ def describe(item):
     parts = name.rsplit('_', 1)
     if len(parts) == 2 and len(parts[1]) == 14 and all(c in '0123456789abcdef' for c in parts[1]):
         name = parts[0]  # drop the app's 14-character hash suffix
-    return name + (' / ' + item['model'] if item.get('model') else '')
+    return (name + (' / ' + item['model'] if item.get('model') else '')
+            + (' [%d-%d]' % tuple(item['frames']) if item.get('frames') else ''))
 
 
 def load(path):

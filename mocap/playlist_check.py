@@ -71,6 +71,8 @@ def schedule_check(window, steps, output: Path, finish):
         entry['video_frame'] = window.video_view.index
         entry['motion_frame'] = window.motion_view.index
         entry['clip'] = [window.slider.clip_in, window.slider.clip_out]
+        entry['window'] = list(window._playlist_window) if window._playlist_window else None
+        entry['active_result'] = window.active_result
         entry['has_motion_preview'] = window.preview_data is not None
         entry['playlist_index_after'] = window.playlist_index
         entry.update(mem())
@@ -89,7 +91,8 @@ def schedule_check(window, steps, output: Path, finish):
             if window.info is None:
                 report['auto_advance'] = {'advanced': False, 'reason': 'item did not load'}
                 return finish_report()
-            window.slider.setValue(max(window.slider.clip_in, window.slider.clip_out - 10))
+            end = window._playlist_window[1] if window._playlist_window else window.slider.clip_out - 1
+            window.slider.setValue(max(window.slider.clip_in, end - 9))
             state['t1'] = time.perf_counter()
             state['from'] = window.playlist_index
             window.toggle_play()

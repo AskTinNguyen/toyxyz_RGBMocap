@@ -37,6 +37,10 @@ class PlaylistWorkspace:
         self._playlist_retry = QTimer(self)
         self._playlist_retry.setInterval(250)
         self._playlist_retry.timeout.connect(self._playlist_retry_pending)
+        self._playlist_window = None
+        self._playlist_window_project = None
+        # Ranged items: compare the playhead with the range end on each slider change (no extra timer).
+        self.slider.valueChanged.connect(lambda _v: self._playlist_check_window())
 
         dock = QDockWidget('Playlist', self)
         dock.setObjectName('playlistDock')
@@ -300,13 +304,27 @@ class PlaylistWorkspace:
             return False
         self._playlist_wait.stop()
         self.stop_playback()
-        try:
-            ok = self.load_project(folder)
-        except (OSError, ValueError, KeyError) as error:
-            self.status.setText('Cannot open playlist item: ' + str(error))
-            return False
-        if ok is False:
-            return False
+        same = self.project is not None and Path(self.project).resolve() == folder.resolve()
+        if not same:  # items that are ranges of the already-open project only seek
+            try:
+                ok = self.load_project(folder)
+            except (OSError, ValueError, KeyError) as error:
+                self.status.setText('Cannot open playlist item: ' + str(error))
+                return False
+            if ok is False:
+                return False
+        if item.get('result') and item['result'] != self.active_result:
+            from .motion_tools import RESULTS, base_result
+            try:
+                available = (Path(self.project) / RESULTS[base_result(item['result'])][0]).is_file()
+            except KeyError:
+                available = False
+            if available:
+                self.set_active_result(item['result'])
+            else:
+                self.status.setText(f"Result '{item['result']}' is not saved in this project; showing {self.active_result}.")
+        self._playlist_window = tuple(item['frames']) if item.get('frames') else None
+        self._playlist_window_project = self.project
         self.playlist_index = index
         self._playlist_refresh()
         self.status.setText(f'Playlist {index + 1}/{len(self.playlist_items)}: {pl.describe(item)}')
@@ -320,15 +338,34 @@ class PlaylistWorkspace:
         if self.timer.isActive():
             self._playlist_wait.stop()
             return
-        if self.info is not None and self.video_readable and self.play_button.isEnabled() and self.preview_data is not None:
+        ready = self.info is not None and self.video_readable and self.play_button.isEnabled()
+        if (ready and self.preview_data is not None) or (ready and self._playlist_waited >= READY_TIMEOUT_MS):
             self._playlist_wait.stop()
-            self.slider.setValue(self.slider.clip_in)
-            self.toggle_play()
+            self.slider.setValue(self._playlist_start_frame())
+            self.toggle_play()  # after the timeout this plays the video even without a motion preview
         elif self._playlist_waited >= READY_TIMEOUT_MS:
             self._playlist_wait.stop()
-            if self.info is not None and self.video_readable and self.play_button.isEnabled():
-                self.slider.setValue(self.slider.clip_in)
-                self.toggle_play()  # play the video even if no motion preview is available
+
+    def _playlist_start_frame(self):
+        if self._playlist_window:
+            return max(self.slider.clip_in, min(self._playlist_window[0], self.slider.clip_out - 1))
+        return self.slider.clip_in
+
+    def _playlist_check_window(self):
+        """While a ranged item plays, treat its last frame as the end: advance (auto-advance) or loop the range."""
+        if not self._playlist_window or not self.timer.isActive() or self.project != self._playlist_window_project:
+            return
+        first, last = self._playlist_window
+        value = self.slider.value()
+        if value < last and value >= first:
+            return
+        if value < first:
+            return  # the user scrubbed before the range; leave playback alone
+        if self.playback_end_reached():
+            return
+        self.stop_playback()
+        self.slider.setValue(self._playlist_start_frame())
+        self.toggle_play()
 
     def playback_end_reached(self):
         """Called by next_frame when the playhead passes the clip end. True stops looping and advances."""
@@ -336,7 +373,8 @@ class PlaylistWorkspace:
             return False
         nxt = pl.neighbour(self.playlist_index, len(self.playlist_items), 1)
         self.stop_playback()
-        self.slider.setValue(max(self.slider.clip_in, self.slider.clip_out - 1))
+        end = self._playlist_window[1] if self._playlist_window else self.slider.clip_out - 1
+        self.slider.setValue(max(self.slider.clip_in, min(end, self.slider.clip_out - 1)))
         if nxt is None:
             self.status.setText('End of playlist.')
         else:
@@ -361,3 +399,4 @@ class PlaylistWorkspace:
         self._playlist_wait.stop()
         self._playlist_retry.stop()
         self._playlist_pending = None
+        self._playlist_window = None
